@@ -66,7 +66,7 @@ metadata {
         input(title: "Camera Video Stream", description: "Choose which type of video stream to use for live video from the camera.  RTSP includes sound, depending on camera configuration.", type: "paragraph", element: "paragraph")
         input("streamType", "enum", title:"Video Stream Type", defaultValue: "rtsp", options: ["rtsp": "RTSP", "mjpeg": "MJPEG"], required: true)
         input(title: "Motion Detection", description: "When motion is detected, the alarm will remain on until the motion has been inactive for this many seconds.", type: "paragraph", element: "paragraph")
-        input("needMotionConfirmation", "bool", title: "False Alarm Prevention", description: "When motion is detected, the camera logs will be queried to prevent false alarms; this will add a slight delay in motion reporting.", defaultValue: true, required: true)
+        input("needMotionConfirmation", "bool", title: "False Alarm Prevention", description: "When motion is detected, the camera logs will be queried to prevent false alarms; this will add a slight delay in motion reporting and motion lasting less than 4 seconds or so may not be captured.", defaultValue: true, required: true)
         input("motionTimeout", "number", title: "End Motion After", defaultValue: "5", description: "Seconds", required: true)
         input("motionDetectionPicture", "bool", title: "Take Pictures On Motion Detection", description: "You can choose to take one or more pictures when motion is detected by entering a number below, or enter 0 to continue taking pictures for as long as the motion persists.", defaultValue: "true")
         input("motionDetectionNumPictures", "number", title: "Number Of Pictures", description: "0 for continuous", defaultValue: "0")
