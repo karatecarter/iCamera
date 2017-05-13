@@ -13,6 +13,13 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
+ 
+ // CHANGE LOG:
+ // 05/11/2017 - Change number settings to "required: false" to workaround bug in Android app
+ //            - Use state variables to hold boolean settings since the setting values seem to get misreported;
+ //              this fixes a bug with motion triggered image capture not working when "False Alarm Prevention" is on
+ // 05/11/2017 - Initial Release
+ 
 metadata {
 	definition (name: "iCamera", namespace: "karatecarter", author: "Daniel Carter") {
 		capability "Configuration"
@@ -59,16 +66,16 @@ metadata {
 	preferences {
     	input(title: "Camera URL", description: "Note: In order to stream live video from your camera, your phone will need to connect directly to the camera.  In most home networks this means that in order to access live video outside of your home network, the following address must point to your home router, and the appropriate port forwarding should be set up to send requests to the camera.  All other feature of the camera will still work from anywhere with a private address.", type: "paragraph", element: "paragraph")
         input("hostname", "string", title:"Camera IP Address/Hostname", required: true)
-        input("httpport", "number", title:"Camera HTTP Port", defaultValue: "80" , required: true)
-        input("rtspport", "number", title:"Camera RTSP Port", defaultValue: "554" , required: true)
+        input("httpport", "number", title:"Camera HTTP Port", defaultValue: "80" , required: false)  // using "required: false" to workaround Android bug
+        input("rtspport", "number", title:"Camera RTSP Port", defaultValue: "554" , required: false) // using "required: false" to workaround Android bug
         input("username", "string", title:"Camera Username (Case Sensitive)", defaultValue: "administrator", description: "Camera Username (case sensitive)", required: true)
         input("password", "password", title:"Camera Password (Case Sensitive)", description: "Camera Password (case sensitive)", required: false)
         input(title: "Camera Video Stream", description: "Choose which type of video stream to use for live video from the camera.  RTSP includes sound, depending on camera configuration.", type: "paragraph", element: "paragraph")
         input("streamType", "enum", title:"Video Stream Type", defaultValue: "rtsp", options: ["rtsp": "RTSP", "mjpeg": "MJPEG"], required: true)
         input(title: "Motion Detection", description: "When motion is detected, the alarm will remain on until the motion has been inactive for this many seconds.", type: "paragraph", element: "paragraph")
         input("needMotionConfirmation", "bool", title: "False Alarm Prevention", description: "When motion is detected, the camera logs will be queried to prevent false alarms; this will add a slight delay in motion reporting and motion lasting less than 4 seconds or so may not be captured.", defaultValue: true, required: true)
-        input("motionTimeout", "number", title: "End Motion After", defaultValue: "5", description: "Seconds", required: true)
-        input("motionDetectionPicture", "bool", title: "Take Pictures On Motion Detection", description: "You can choose to take one or more pictures when motion is detected by entering a number below, or enter 0 to continue taking pictures for as long as the motion persists.", defaultValue: "true")
+        input("motionTimeout", "number", title: "End Motion After", defaultValue: "5", description: "Seconds", required: false) // using "required: false" to workaround Android bug
+        input("motionDetectionPicture", "bool", title: "Take Pictures On Motion Detection", description: "You can choose to take one or more pictures when motion is detected by entering a number below, or enter 0 to continue taking pictures for as long as the motion persists.", defaultValue: "true", required: true)
         input("motionDetectionNumPictures", "number", title: "Number Of Pictures", description: "0 for continuous", defaultValue: "0")
         input("motionDetectionPictureInterval", "number", title: "Picture Interval (Seconds)", description: "Seconds", defaultValue: "30")
         input("motionDetectionEmail", "bool", title: "Send Email On Motion Detection", description: "This uses the camera's built in email functionality; configure email parameters through the camera software.", defaultValue: "false", required: true)
@@ -227,13 +234,25 @@ private getLine(text, startPos)
 }
 
 def installed() {
-	state.waitingForConfirmation = false
+	log.debug "Installed with settings: $settings"
+    
+    // these boolean settings don't always seem to work right below
+    state.motionDetectionPicture = motionDetectionPicture
+    state.motionDetectionEmail = motionDetectionEmail
+    
+    state.waitingForConfirmation = false
     state.waitingForResponse = false
     configure()
 }
 
 def updated() {
-	state.waitingForConfirmation = false
+	log.debug "Updated with settings: $settings"
+    
+    // these boolean settings don't always seem to work right below
+    state.motionDetectionPicture = motionDetectionPicture
+    state.motionDetectionEmail = motionDetectionEmail
+    
+    state.waitingForConfirmation = false
     state.waitingForResponse = false
     configure()
 }
@@ -367,14 +386,14 @@ def processResponse(def body) {
     	log.warn "Motion window parameters differ, calling Configure"
         configure()
         log.warn "$windowMName != $motionWindowName || $window1Coordinates != $motionWindowCoordinates || $window1Sensitivity != $motionWindowSensitivity || $window1Threshold != $motionWindowThreshhold"
-    } else if (device.currentValue("switch") == "on" && sendEmail != "" && (sendEmail != (motionDetectionEmail ? "1":"0") || eventInterval != "0"))
+    } else if (device.currentValue("switch") == "on" && sendEmail != "" && (sendEmail != (state.motionDetectionEmail ? "1":"0") || eventInterval != "0"))
     {
-    	/* not sure why motionDetectionEmail always seems to return the wrong value here
+    	// not sure why motionDetectionEmail always seems to return the wrong value here
         log.warn "Event parameters differ; calling configure"
         log.warn "sendEmail=$sendEmail eventInterval=$eventInterval"
-        log.warn "motionDetectionEmail=${settings.motionDetectionEmail ? "1":"0"}"
-        configure()
-        */
+        log.warn "motionDetectionEmail=${state.motionDetectionEmail ? "1":"0"}"
+        //configure()
+        
 	}
     
     if (window1Switch != "") sendEvent(name: "window1Monitor", value: (window1Switch == "1"? "on":"off"), descriptionText: "$window1Name is ${window1Switch == "1"? "":"not "}being monitored")
@@ -444,7 +463,7 @@ private hubGet(def uri) {
         }
     	log.debug "Setting camera IP to ${state.ip}"
     } else {
-    	log.debug "Camera IP is ${state.ip}"
+    	//log.debug "Camera IP is ${state.ip}"
     }
     
     //Need to set network id or parse() won't get called with results
@@ -561,7 +580,7 @@ def configure() {
     }
     if (device.currentValue("switch") == "on")
     {
-        cmds << hubGet("/adm/set_group.cgi?group=EVENT&event_interval=0&event_mt=email:${motionDetectionEmail ? "1" : "0"}")
+        cmds << hubGet("/adm/set_group.cgi?group=EVENT&event_interval=0&event_mt=email:${state.motionDetectionEmail ? "1" : "0"}")
     }
     
     cmds << poll()
@@ -589,7 +608,7 @@ def alarmOn()
     log.debug "Enabling Alarm"
 
 	// Not sure how to set h_trig_md ("Motion Detection" checkbox on the "Event Trigger" page) through API:
-    delayBetween([hubGet("/adm/file.cgi?todo=save&h_en_trig=1&h_trig_md=1"), hubGet("/adm/set_group.cgi?group=EVENT&event_trigger=1&event_interval=0&event_mt=email:${motionDetectionEmail ? "1" : "0"};httpn:1"), pollGroup("EVENT")], delayInterval())
+    delayBetween([hubGet("/adm/file.cgi?todo=save&h_en_trig=1&h_trig_md=1"), hubGet("/adm/set_group.cgi?group=EVENT&event_trigger=1&event_interval=0&event_mt=email:${state.motionDetectionEmail ? "1" : "0"};httpn:1"), pollGroup("EVENT")], delayInterval())
 	// set event interval to 0 to allow camera to keep sending motion detection events while motion is active; motion will be ended when no events have been received for motionTimeout seconds
 }
 
@@ -690,11 +709,15 @@ private confirmedMotion() {
     
 	if (device.currentValue("motion") == "inactive")
     {
-    	sendEvent(name: "motion", value: "active")
+    	log.info "Motion is active"
+        sendEvent(name: "motion", value: "active")
     	state.numPicturesTaken = 0
-        if (motionDetectionPicture)
+        if (state.motionDetectionPicture)
         {
-        	takeMotionTriggeredPicture(true) // force first picture even if waiting for motionConfirmation
+        	log.trace "Capturing Image"
+            takeMotionTriggeredPicture(true) // force first picture even if waiting for motionConfirmation
+        } else {
+        	log.debug "state.motionDetectionPicture = ${state.motionDetectionPicture}"
         }
     }
     sendEvent(name: "alarmStatus", value: "alarm", displayed: false)
