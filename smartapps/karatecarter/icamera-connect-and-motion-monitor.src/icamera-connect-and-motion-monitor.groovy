@@ -13,6 +13,10 @@
 *  for the specific language governing permissions and limitations under the License.
 *
 */
+ // CHANGE LOG:
+ // 05/11/2017 - Use try/catch when registering callback to avoid exception when creating devices
+ // 05/11/2017 - Initial Release
+
 definition(
     name: "iCamera Connect and Motion Monitor",
     namespace: "karatecarter",
@@ -86,7 +90,8 @@ def initialize() {
                     	break
                     }
                 }
-            	def childDevice = addChildDevice("karatecarter", "iCamera", name, location.hubs[0].id, [name: "iCamera", label: "iCamera${settings.numCameras > 1? "$i": ""}", completedSetup: false])
+            	log.trace "Adding $name"
+                def childDevice = addChildDevice("karatecarter", "iCamera", name, location.hubs[0].id, [name: "iCamera", label: "iCamera${settings.numCameras > 1? "$i": ""}", completedSetup: false])
             } catch (e) {
                 log.error "Error creating device: ${e}"
             }
@@ -116,8 +121,12 @@ def setUpCallbackURLs(event)
     def cameras = getChildDevices()
     cameras.each { camera ->
     	def callbackURL = apiServerUrl("/api/smartapps/installations/${app.id}/${camera.id}/TriggerMotion?access_token=${state.accessToken}") // As per the new format
-        log.info "Registering $camera Motion Callback URL -> $callbackURL}"
-        camera.setCallbackURL(URLEncoder.encode(longURLService(shortenURL(callbackURL))))   
+        log.info "Registering $camera Motion Callback URL -> ${callbackURL}"
+        try {
+        	camera.setCallbackURL(URLEncoder.encode(longURLService(shortenURL(callbackURL))))   
+        } catch (Exception e) {
+        	log.warn "Error registering callback URL: $e"
+        }
     }
 }
 
