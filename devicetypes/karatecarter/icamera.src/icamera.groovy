@@ -15,6 +15,8 @@
  */
  
  // CHANGE LOG:
+ // 01/04/2020 - Use callback function instead of relying on deviceNetworkId
+ //            - Ensure callback url gets set after setting hostname
  // 05/11/2017 - Change number settings to "required: false" to workaround bug in Android app
  //            - Use state variables to hold boolean settings since the setting values seem to get misreported;
  //              this fixes a bug with motion triggered image capture not working when "False Alarm Prevention" is on
@@ -256,9 +258,14 @@ def updated() {
     state.waitingForResponse = false
     configure()
 }
-// parse events into attributes
+
 def parse(String description) {
-    log.trace "Received response from Camera to hubAction"
+	log.trace "Received response for Camera networkDeviceId"
+    parseResponse(description)
+}
+
+private parseResponse(description){
+    log.trace "Parsing response"
     
     def descMap = parseDescriptionAsMap(description)
     //log.trace "${descMap.inspect()}"
@@ -383,13 +390,13 @@ def processResponse(def body) {
     
     if (window1Switch != "" && setMotionWindow && (windowMName != motionWindowName || window1Coordinates != motionWindowCoordinates || window1Sensitivity != "$motionWindowSensitivity" || window1Threshold != "$motionWindowThreshhold"))
     {
-    	log.warn "Motion window parameters differ, calling Configure"
-        configure()
+    	log.warn "Motion window parameters differ"
+        //configure() // calling configure here seems to send incorrect data
         log.warn "$windowMName != $motionWindowName || $window1Coordinates != $motionWindowCoordinates || $window1Sensitivity != $motionWindowSensitivity || $window1Threshold != $motionWindowThreshhold"
     } else if (device.currentValue("switch") == "on" && sendEmail != "" && (sendEmail != (state.motionDetectionEmail ? "1":"0") || eventInterval != "0"))
     {
     	// not sure why motionDetectionEmail always seems to return the wrong value here
-        log.warn "Event parameters differ; calling configure"
+        log.warn "Event parameters differ"
         log.warn "sendEmail=$sendEmail eventInterval=$eventInterval"
         log.warn "motionDetectionEmail=${state.motionDetectionEmail ? "1":"0"}"
         //configure()
@@ -448,6 +455,11 @@ private getAuthorization() {
 }
 
 private hubGet(def uri) {
+    if (!hostname) {
+      log.debug "Hostname not set; discarding hubGet request"
+      return
+    }
+    
     if (!state.hostname)
     {
     	state.hostname = ""
@@ -463,7 +475,7 @@ private hubGet(def uri) {
         }
     	log.debug "Setting camera IP to ${state.ip}"
     } else {
-    	//log.debug "Camera IP is ${state.ip}"
+    	log.debug "Camera IP is ${state.ip}"
     }
     
     //Need to set network id or parse() won't get called with results
@@ -472,16 +484,20 @@ private hubGet(def uri) {
     device.deviceNetworkId = "$iphex:$porthex"
     
     log.trace "Sending hubAction command -> http://${getHostAddress()}$uri"
+    log.debug "deviceNetworkId = " + device.deviceNetworkId
+    
     def hubAction = new physicalgraph.device.HubAction(
         method: "GET",
         path: uri,
         headers: [HOST:getHostAddress(),
-                  Authorization:getAuthorization()]
+                  Authorization:getAuthorization()],
+                String dni = null,
+                [callback: callbackParse]
     )
 	// needed for pictures:
     if (uri == getSnapshotURI())
     {
-    	hubAction.options = [outputMsgToS3:true]
+    	hubAction.options = [outputMsgToS3:true, callback: callbackParse]
     }
     sendHubCommand(hubAction)
     
@@ -490,6 +506,17 @@ private hubGet(def uri) {
     	log.trace "Check for response in 30 seconds"
         runIn(30, "noResponse") // if no response is received in 30 seconds then device will be marked offline
     	state.waitingForResponse = true
+    }
+}
+
+void callbackParse(physicalgraph.device.HubResponse hubResponse) {
+    log.trace "Received callback response from Camera"
+    //log.debug "Response: ${hubResponse}\nDescription: ${hubResponse.description}\nBody: ${hubResponse.body}"
+    
+    if (hubResponse.description) {
+    	parseResponse(hubResponse.description)
+    } else {
+        log.error "Received an invalid response from Camera or hub"
     }
 }
 
@@ -570,6 +597,12 @@ private int delayInterval() {
 // handle commands
 def configure() {
 	log.debug "Executing 'configure'"
+    
+        
+    if (state.callback) {
+      setCallbackURL(state.callback)
+    }
+    
     getStreamURL()
     
     def cmds = []
@@ -735,7 +768,12 @@ def endMotion() {
 def setCallbackURL(String url)
 {
 	log.info "Setting callback URL"
-    delayBetween([hubGet("/adm/set_group.cgi?group=HTTP_NOTIFY&http_notify=1&http_url=$url"), pollGroup("HTTP_NOTIFY")], delayInterval())
+    state.callback = url
+    if (hostname) { // can't set URL if hostname isn't set yet
+      delayBetween([hubGet("/adm/set_group.cgi?group=HTTP_NOTIFY&http_notify=1&http_url=$url"), pollGroup("HTTP_NOTIFY")], delayInterval())
+    } else {
+      log.trace "Hostname not set"
+    }
 }
 
 def window1On()
