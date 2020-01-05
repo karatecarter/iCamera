@@ -14,6 +14,7 @@
 *
 */
  // CHANGE LOG:
+ // 01/04/2020 - Use tinyurl.com instead of tiny-url.info which requires api key
  // 05/11/2017 - Use try/catch when registering callback to avoid exception when creating devices
  // 05/11/2017 - Initial Release
 
@@ -102,6 +103,7 @@ def initialize() {
     subscribe(cameras, "motion.active", motionDetected)
     subscribe(cameras, "switch.on", setUpCallbackURLs)
     
+    log.trace "Cameras initialized"
     setUpCallbackURLs()
 }
 
@@ -111,9 +113,11 @@ private removeChildDevices(delete) {
     }
 }
 
-def setUpCallbackURLs(event)
+private setUpCallbackURLs()
 {
-	if (!state.accessToken)
+	log.trace "Setup callback URLs"
+    
+    if (!state.accessToken)
     {
     	setupAccessToken()
     }
@@ -123,7 +127,7 @@ def setUpCallbackURLs(event)
     	def callbackURL = apiServerUrl("/api/smartapps/installations/${app.id}/${camera.id}/TriggerMotion?access_token=${state.accessToken}") // As per the new format
         log.info "Registering $camera Motion Callback URL -> ${callbackURL}"
         try {
-        	camera.setCallbackURL(URLEncoder.encode(longURLService(shortenURL(callbackURL))))   
+            camera.setCallbackURL(URLEncoder.encode(longURLService(tinyUrl(callbackURL))))
         } catch (Exception e) {
         	log.warn "Error registering callback URL: $e"
         }
@@ -170,23 +174,19 @@ def motionDetected(event)
     push ? sendPush(message) : sendNotificationEvent(message)
 }
 
-private String shortenURL(longURL) {
+private String tinyUrl(longURL) {
     def params = [
-        uri: 'http://tiny-url.info/api/v1/create',
-        contentType: 'application/json',
-        query: [apikey:'D4AG7G09FA819E00F77C', provider: 'tinyurl_com', format: 'json', url: longURL]
+        uri: 'http://tinyurl.com/api-create.php',
+        //contentType: 'application/json',
+        query: [url: longURL]
     ]
 
     try {
         httpGet(params) { response ->
-            //log.trace "Request was successful, data=$response.data, status=$response.status"
-            if (response.data.state == "ok") {
-                log.trace "Short URL: ${response.data.shorturl}"
-                log.trace "Long URL: ${response.data.longurl}"
-                return response.data.shorturl
-            } else {
-                log.error "Error in return short URL: ${response.data}"
-            }
+            //log.trace "Request was successful, data=$response.data (${})"
+            def tiny = response.data.getText()
+            log.trace "Short URL: ${tiny}"
+            return tiny
         }
     } catch (e) {
         log.error "Error getting shortened URL: $e"
